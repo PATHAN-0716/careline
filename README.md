@@ -64,13 +64,17 @@ npx playwright install chromium
 npm test
 ```
 
-Browser tests use fixtures for repeatable UI checks. Run the [live demo checklist](docs/demo.md) with working provider credentials to verify voice and Gemini end to end.
+Browser tests use fixtures for repeatable UI checks. The live browser test exercised ElevenLabs speech, spoken phone confirmation, Gemini function calls, booking, and cancellation in one session. Follow the [live demo checklist](docs/demo.md) to reproduce it.
+
+## Recorded demo
+
+[Watch the live browser demo](docs/demo-recording.mp4). It uses synthetic caller speech and the live ElevenLabs and Gemini services. The recording shows the appointment appear on the dashboard, followed by the cancellation and call summary.
 
 ## Screenshots
 
 [Dashboard](docs/screenshots/dashboard.png) · [Doctors](docs/screenshots/doctors.png) · [Calendar](docs/screenshots/calendar.png) · [Dark theme](docs/screenshots/dark.png) · [Mobile](docs/screenshots/mobile.png)
 
-The [booking ticket](docs/screenshots/booking-ui-fixture.png) and [post-call summary](docs/screenshots/summary-ui-fixture.png) were captured from the running UI with Playwright fixtures.
+[Live booking ticket](docs/screenshots/live-booking.png) · [Live post-call summary](docs/screenshots/live-summary.png)
 
 ## Demo boundaries
 

@@ -1,12 +1,38 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
-from pipecat.processors.frame_processor import FrameProcessor
+from pipecat.frames.frames import BotStoppedSpeakingFrame, TTSTextFrame
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from careline import voice
 from careline.store import Store
+
+
+def test_timestamped_private_readback_words_are_not_transcribed():
+    async def check():
+        readback_finished = Mock()
+        call = SimpleNamespace(
+            readback="queued",
+            identity=SimpleNamespace(readback_finished=readback_finished),
+            transcript=AsyncMock(),
+        )
+        output = voice.AgentOutput(call)
+        output.push_frame = AsyncMock()
+        for word in ("nine", "eight", "correct?"):
+            frame = TTSTextFrame(word, text_type="word")
+            frame.append_to_context = False
+            await output.process_frame(frame, FrameDirection.DOWNSTREAM)
+        assert call.readback == "played"
+        readback_finished.assert_not_called()
+        await output.process_frame(BotStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+        assert call.readback == "idle"
+        readback_finished.assert_called_once_with()
+        call.transcript.assert_not_awaited()
+
+    asyncio.run(check())
 
 
 class ProviderStub(FrameProcessor):

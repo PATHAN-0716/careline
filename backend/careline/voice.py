@@ -12,7 +12,8 @@ from pipecat.adapters.llm.schemas.function_schema import FunctionSchema
 from pipecat.adapters.llm.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (
-    BotStoppedSpeakingFrame, InputTransportMessageFrame, InterimTranscriptionFrame, InterruptionFrame,
+    AggregatedTextProgressFrame, BotStoppedSpeakingFrame, InputTransportMessageFrame,
+    InterimTranscriptionFrame, InterruptionFrame,
     LLMFullResponseStartFrame, LLMRunFrame, TTSSpeakFrame, TTSTextFrame, TranscriptionFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
@@ -36,11 +37,14 @@ from careline.store import clinic_today, now
 handler = SmallWebRTCRequestHandler()
 PROMPT = """You are Careline Assistant, a warm and concise voice scheduling assistant.
 Ask one question at a time. Help with scheduling only. Use the availability tool to offer
-at most three slots, and use only IDs returned by tools. Dates and times are Asia/Kolkata.
-For bookings, ask which slot the caller wants before invoking the booking tool.
+at most three slots. For booking, use the exact slot ID from availability results after
+the caller selects it. A choice like "the earliest slot you offered" is a selection.
+When availability returns no slots, help the caller clarify the doctor, specialty, or date.
+Dates and times are Asia/Kolkata.
 When the backend returns phone_required, ask the caller to say their phone number.
 The backend handles reading back and verifying phone numbers. Never ask for names or OTPs.
-After confirmation, resume the pending booking or cancellation using the appropriate tool.
+After confirmation, resume a booking or cancellation only if the caller actually requested it.
+If the caller provided a number before requesting an action, ask how you can help.
 If cancellation returns select_appointment, describe the matching visits and ask which one.
 Never claim a booking or cancellation succeeded until its tool returns the updated record.
 Times returned by tools are UTC ISO timestamps. Convert to India time when speaking them.
@@ -191,7 +195,11 @@ class CallerInput(FrameProcessor):
                 tail = call.identity.confirmed.tail
                 await run_in_threadpool(call.store.confirm_session, call.session_id, tail)
                 await call.send("phone_confirmed", {"phone_tail": tail})
-                self.context.add_message({"role": "user", "content": "The caller verbally confirmed their phone number. Resume their last requested action, asking for any missing selection."})
+                self.context.add_message({"role": "user", "content": (
+                    "The caller verbally confirmed their phone number. If they have already requested "
+                    "a specific scheduling action, continue that request. Otherwise acknowledge the "
+                    "confirmation and ask how you can help with appointments."
+                )})
                 await self.push_frame(LLMRunFrame())
                 return
             frame.text = visible
@@ -225,8 +233,18 @@ class AgentOutput(FrameProcessor):
                 await self.flush()
             if isinstance(frame, InterruptionFrame):
                 await self.flush()
+            if (
+                isinstance(frame, AggregatedTextProgressFrame)
+                and frame.text_type == "careline-direct"
+                and not frame.remaining_text.strip()
+                and self.call.readback == "queued"
+                and "correct" in frame.text.lower()
+            ):
+                self.call.readback = "played"
             if isinstance(frame, TTSTextFrame) and frame.text.strip():
-                if frame.text_type == "careline-direct":
+                # Timestamped words use TextType.WORD even for a custom TTSSpeakFrame.
+                # Its append_to_context flag still identifies our private speech.
+                if frame.text_type == "careline-direct" or frame.append_to_context is False:
                     if self.call.readback == "queued" and "correct" in frame.text.lower():
                         self.call.readback = "played"
                 else:
@@ -248,7 +266,13 @@ async def run_call(connection, store, secret):
     try:
         transport = SmallWebRTCTransport(webrtc_connection=connection,
                                          params=TransportParams(audio_in_enabled=True, audio_out_enabled=True))
-        stt = ElevenLabsRealtimeSTTService(api_key=os.environ["ELEVENLABS_API_KEY"])
+        doctors = await run_in_threadpool(store.doctors)
+        stt = ElevenLabsRealtimeSTTService(
+            api_key=os.environ["ELEVENLABS_API_KEY"],
+            settings=ElevenLabsRealtimeSTTService.Settings(
+                keyterms=[doctor["name"] for doctor in doctors],
+            ),
+        )
         tts = ElevenLabsTTSService(api_key=os.environ["ELEVENLABS_API_KEY"], settings=ElevenLabsTTSService.Settings(
             voice=os.environ["ELEVENLABS_VOICE_ID"], model="eleven_flash_v2_5"))
         llm = GoogleLLMService(api_key=os.environ["GOOGLE_API_KEY"], settings=GoogleLLMService.Settings(

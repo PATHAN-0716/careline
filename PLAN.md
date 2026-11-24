@@ -4,5 +4,6 @@
 - [x] Verify SQLite scheduling, concurrent booking, ownership, and verbal confirmation guards.
 - [x] Verify the scheduling workspace and call interface with Playwright.
 - [x] Review desktop and mobile captures and complete the README, demo script, and interview guide.
-- [ ] Configure working ElevenLabs and Gemini credentials, then verify live voice, spoken readback, and native function calling in the browser.
-- [ ] Rehearse and record the live booking demo. Assemble the repository link, video, and pipeline description for submission.
+- [x] Verify live ElevenLabs speech, spoken readback, and native Gemini function calling in the browser.
+- [x] Record the live booking demo and verify cancellation restores the slot in the same session.
+- [ ] Publish to an authorized GitHub repository and submit the link, video, and pipeline description.
